@@ -46,7 +46,7 @@ int main(int argc, char ** argv)
 
         // get current joint positions
         q = robot->jointPosition();
-        cout << "Current joint position : " << q.t() << endl;
+        //cout << "Current joint position : " << q.t() << endl;
 
         // Direct Geometry for end-effector
         M = robot->fMe(q);  // matrix form
@@ -67,6 +67,17 @@ int main(int argc, char ** argv)
 
             // TODO: fill the fJw function
             // TODO: compute vCommand
+            vpMatrix fSe(6,6);  // initialize fSe
+            // concatenate fSe
+            ecn::putAt(fSe, M.getRotationMatrix(), 0, 0);
+            ecn::putAt(fSe, M.getRotationMatrix(), 3, 3);
+
+            // write operational velocity in fixed frame
+            vpColVector fVe;
+            fVe = fSe * v;
+
+            // compute joint velocity
+            vCommand = robot->fJe(q).pseudoInverse() * fVe;
 
             robot->setJointVelocity(vCommand);
         }
