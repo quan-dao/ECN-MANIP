@@ -2,6 +2,11 @@
 #include <trig_solvers.h>
 
 // Model of Kuka KR16 robot
+double r1 = 0.675;
+double a2 = 0.26;
+double a3 = 0.68;
+double a4 = 0.035;
+double r4 = 0.67;
 
 // Any end-effector to wrist constant transform
 void ecn::RobotKr16::init_wMe()
@@ -16,11 +21,6 @@ void ecn::RobotKr16::init_wMe()
 vpHomogeneousMatrix ecn::RobotKr16::fMw(const vpColVector &q) const
 {
     vpHomogeneousMatrix M;
-    double r1 = 0.675;
-    double a2 = 0.26;
-    double a3 = 0.68;
-    double a4 = 0.035;
-    double r4 = 0.67;
     // Generated pose code
     const double c1 = cos(q[0]);
     const double c2 = cos(q[1]);
@@ -62,19 +62,126 @@ vpColVector ecn::RobotKr16::inverseGeometry(const vpHomogeneousMatrix &Md, const
     // desired wrist pose
     vpHomogeneousMatrix fMw = Md * wMe.inverse();
 
+    // initilize IG solutions
+    int num_ig_solutions = 4;
+    vpMatrix ig_solutions(6, num_ig_solutions);
 
-    return bestCandidate(q0);
+    /* WRIST POSITIONING */
+
+    // get position of the wrist in fixed frame
+    auto ftw = fMw.getTranslationVector();
+
+    // q1
+    auto q1 = atan2(ftw[1], -ftw[0]);
+    if (inAngleLimits(q1, q_min[0], q_max[0])) {
+        for(int j = 0; j < num_ig_solutions; ++j) {
+            ig_solutions[0][j] = q1;
+        }
+    }
+
+    // q2 & q3
+    double z1, z2;
+    z1 = -ftw[2] + r1;
+
+    if (sin(q1) == 0) {
+        z2 = - ftw[0] / cos(q1) + a2;
+    } else {
+        z2 = ftw[1] / sin(q1) + a2;
+    }
+
+    int col_offset = 0;
+    for (auto qs : solveType7(0, -a3, z1, z2, a4, r4, q_min[1], q_max[1], q_min[1] + q_min[2], q_max[1] + q_max[2])) {
+        auto q2 = qs.qi;
+        auto q3 = qs.qj - q2;
+        // update IG solutions
+        ig_solutions[1][0 + 2 * col_offset] = q2;
+        ig_solutions[2][0 + 2 * col_offset] = q3;
+        ig_solutions[1][1 + 2 * col_offset] = q2;
+        ig_solutions[2][1 + 2 * col_offset] = q3;
+        ++col_offset;
+    }
+
+    /* End: WRIST POSITIONING */
+
+    /* WRIST ORIENTING */
+    for (int col_offset = 0; col_offset < 2; ++col_offset){
+        // Compute fR3
+        const auto q1 = ig_solutions[0][0 + 2 * col_offset];
+        const auto q2 = ig_solutions[1][0 + 2 * col_offset];
+        const auto q3 = ig_solutions[2][0 + 2 * col_offset];
+        const double s23 = sin(q2 + q3);
+        const double s1 = sin(q1);
+        const double c23 = cos(q2 + q3);
+        const double c1 = cos(q1);
+        vpMatrix fR3(3, 3);
+        fR3[0][0] = -s23 * c1;
+        fR3[1][0] = s1 * s23;
+        fR3[2][0] = -c23;
+        fR3[0][1] = -c1 * c23;
+        fR3[1][1] = s1 * c23;
+        fR3[2][1] = s23;
+        fR3[0][2] = s1;
+        fR3[1][2] = c1;
+        fR3[2][2] = 0;
+
+        // orientation of Wrist relative to frame 3
+        auto _3Rw = fR3.transpose() * fMw.getRotationMatrix();
+
+        // q5
+        double q5 = acos(_3Rw[1][2]);
+        double q5_neq = -q5;
+        if (inAngleLimits(q5, q_min[4], q_max[4])) {
+            ig_solutions[4][0 + 2 * col_offset] = q5;
+        }
+        if (inAngleLimits(q5_neq, q_min[4], q_max[4])) {
+            ig_solutions[4][1 + 2 * col_offset] = q5_neq;
+        }
+
+        // q4 & q6
+        if (sin(q5) != 0) {
+            double q6 = atan2(-_3Rw[1][1], _3Rw[1][0]);
+            double q4 = atan2(_3Rw[2][2], -_3Rw[0][2]);
+            // update IG solutions
+            if (inAngleLimits(q6, q_min[5], q_max[5]) && inAngleLimits(q4, q_min[3], q_max[3])) {
+                ig_solutions[3][0 + 2 * col_offset] = q4;
+                ig_solutions[5][0 + 2 * col_offset] = q6;
+                ig_solutions[3][1 + 2 * col_offset] = M_PI + q4;
+                ig_solutions[5][1 + 2 * col_offset] = M_PI + q6;
+            }
+        } else {
+            // Singularity
+            double q64 = atan2(-_3Rw[0][1], _3Rw[0][0]);
+            double q6 = q0[5];  // last value of q6
+            double q4 = (q64 - q6) * cos(q5);  // already take into account c5 = 1 & c5 = -1
+            // update IG solutions
+            if (inAngleLimits(q6, q_min[5], q_max[5]) && inAngleLimits(q4, q_min[3], q_max[3])) {
+                ig_solutions[3][0 + 2 * col_offset] = q4;
+                ig_solutions[5][0 + 2 * col_offset] = q6;
+                ig_solutions[3][1 + 2 * col_offset] = q4;
+                ig_solutions[5][1 + 2 * col_offset] = q6;
+            }
+        }
+
+    }
+    /* End Wrist Orienting*/
+
+    // Choose the bestCandidate
+    int best_col = 0;
+    double min_dist = (ig_solutions.getCol(best_col) - q0).euclideanNorm();
+    for (int j = 1; j < num_ig_solutions; ++j) {
+        if ((ig_solutions.getCol(best_col) - q0).euclideanNorm() < min_dist) {
+            best_col = j;
+        }
+    }
+
+//     return bestCandidate(q0);
+    return ig_solutions.getCol(best_col);
 }
 
 
 vpMatrix ecn::RobotKr16::fJw(const vpColVector &q) const
 {
     vpMatrix J(6, dofs);
-//    double r1 = 0.675;
-    double a2 = 0.26;
-    double a3 = 0.68;
-    double a4 = 0.035;
-    double r4 = 0.67;
     // Generated Jacobian code
     const double c1 = cos(q[0]);
     const double c2 = cos(q[1]);
