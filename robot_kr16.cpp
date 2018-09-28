@@ -63,48 +63,61 @@ vpColVector ecn::RobotKr16::inverseGeometry(const vpHomogeneousMatrix &Md, const
     vpHomogeneousMatrix fMw = Md * wMe.inverse();
 
     // initilize IG solutions
-    int num_ig_solutions = 4;
+    int num_ig_solutions = 8;
     vpMatrix ig_solutions(6, num_ig_solutions);
 
     /* WRIST POSITIONING */
-
     // get position of the wrist in fixed frame
     auto ftw = fMw.getTranslationVector();
 
-    // q1
-    auto q1 = atan2(ftw[1], -ftw[0]);
-    if (inAngleLimits(q1, q_min[0], q_max[0])) {
-        for(int j = 0; j < num_ig_solutions; ++j) {
-            ig_solutions[0][j] = q1;
+    // q2 & q3
+    double z1 = r1 - ftw[2];
+    double z2 = a2 + sqrt(ftw[0] * ftw[0] + ftw[1] * ftw[1]);
+    double z2_neg = a2 - sqrt(ftw[0] * ftw[0] + ftw[1] * ftw[1]);
+    // solve for q2 & q3 with z1 & z2
+    for (int j = 0; j < 2; ++j){
+        int j_offset = 0;
+        for (auto qs : solveType7(0, -a3, z1, z2, a4, r4, q_min[1], q_max[1], q_min[1] + q_min[2], q_max[1] + q_max[2])) {
+            auto q2 = qs.qi;
+            auto q3 = qs.qj - q2;
+            // q1
+            double _coef_q1 = a2 + a3 * cos(q2) - a4 * sin(q2 + q3) + r4 * cos(q2 + q3);
+            double q1 = atan2(ftw[1]/(-_coef_q1), ftw[0]/_coef_q1);
+            // update IG solutions
+            ig_solutions[0][0 + j_offset] = q1;
+            ig_solutions[1][0 + j_offset] = q2;
+            ig_solutions[2][0 + j_offset] = q3;
+            ig_solutions[0][1 + j_offset] = q1;
+            ig_solutions[1][1 + j_offset] = q2;
+            ig_solutions[2][1 + j_offset] = q3;
+            // increase j_offset to move to the next pair of columns
+            j_offset = j_offset + 2;
         }
     }
-
-    // q2 & q3
-    double z1, z2;
-    z1 = -ftw[2] + r1;
-
-    if (sin(q1) == 0) {
-        z2 = - ftw[0] / cos(q1) + a2;
-    } else {
-        z2 = ftw[1] / sin(q1) + a2;
+    // solve for q2 & q3 with z1 & z2_neg
+    for (int j = 0; j < 2; ++j){
+        int j_offset = 0;
+        for (auto qs : solveType7(0, -a3, z1, z2_neg, a4, r4, q_min[1], q_max[1], q_min[1] + q_min[2], q_max[1] + q_max[2])) {
+            auto q2 = qs.qi;
+            auto q3 = qs.qj - q2;
+            // q1
+            double _coef_q1 = a2 + a3 * cos(q2) - a4 * sin(q2 + q3) + r4 * cos(q2 + q3);
+            double q1 = atan2(ftw[1]/(-_coef_q1), ftw[0]/_coef_q1);
+            // update IG solutions
+            ig_solutions[0][4 + j_offset] = q1;
+            ig_solutions[1][4 + j_offset] = q2;
+            ig_solutions[2][4 + j_offset] = q3;
+            ig_solutions[0][5 + j_offset] = q1;
+            ig_solutions[1][5 + j_offset] = q2;
+            ig_solutions[2][5 + j_offset] = q3;
+            // increase j_offset to move to the next pair of columns
+            j_offset = j_offset + 2;
+        }
     }
-
-    int col_offset = 0;
-    for (auto qs : solveType7(0, -a3, z1, z2, a4, r4, q_min[1], q_max[1], q_min[1] + q_min[2], q_max[1] + q_max[2])) {
-        auto q2 = qs.qi;
-        auto q3 = qs.qj - q2;
-        // update IG solutions
-        ig_solutions[1][0 + 2 * col_offset] = q2;
-        ig_solutions[2][0 + 2 * col_offset] = q3;
-        ig_solutions[1][1 + 2 * col_offset] = q2;
-        ig_solutions[2][1 + 2 * col_offset] = q3;
-        ++col_offset;
-    }
-
     /* End: WRIST POSITIONING */
 
     /* WRIST ORIENTING */
-    for (int col_offset = 0; col_offset < 2; ++col_offset){
+    for (int col_offset = 0; col_offset < 4; ++col_offset){
         // Compute fR3
         const auto q1 = ig_solutions[0][0 + 2 * col_offset];
         const auto q2 = ig_solutions[1][0 + 2 * col_offset];
@@ -139,8 +152,8 @@ vpColVector ecn::RobotKr16::inverseGeometry(const vpHomogeneousMatrix &Md, const
 
         // q4 & q6
         if (sin(q5) != 0) {
-            double q6 = atan2(-_3Rw[1][1], _3Rw[1][0]);
-            double q4 = atan2(_3Rw[2][2], -_3Rw[0][2]);
+            double q6 = atan2(-_3Rw[1][1] / sin(q5), _3Rw[1][0] / sin(q5));
+            double q4 = atan2(_3Rw[2][2] / sin(q5), -_3Rw[0][2] / sin(q5));
             // update IG solutions
             if (inAngleLimits(q6, q_min[5], q_max[5]) && inAngleLimits(q4, q_min[3], q_max[3])) {
                 ig_solutions[3][0 + 2 * col_offset] = q4;
@@ -175,7 +188,7 @@ vpColVector ecn::RobotKr16::inverseGeometry(const vpHomogeneousMatrix &Md, const
     }
 
 //     return bestCandidate(q0);
-    return ig_solutions.getCol(best_col);
+    return ig_solutions.getCol(0);
 }
 
 
