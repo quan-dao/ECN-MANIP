@@ -2,11 +2,11 @@
 #include <trig_solvers.h>
 
 // Model of Kuka KR16 robot
-double r1 = 0.675;
-double a2 = 0.26;
-double a3 = 0.68;
-double a4 = 0.035;
-double r4 = 0.67;
+const double r1 = 0.675;
+const double a2 = 0.26;
+const double a3 = 0.68;
+const double a4 = 0.035;
+const double r4 = 0.67;
 
 // Any end-effector to wrist constant transform
 void ecn::RobotKr16::init_wMe()
@@ -74,15 +74,17 @@ vpColVector ecn::RobotKr16::inverseGeometry(const vpHomogeneousMatrix &Md, const
     double z1 = r1 - ftw[2];
     double z2 = a2 + sqrt(ftw[0] * ftw[0] + ftw[1] * ftw[1]);
     double z2_neg = a2 - sqrt(ftw[0] * ftw[0] + ftw[1] * ftw[1]);
+    double q23_min = q_min[1] + q_min[2];
+    double q23_max = q_max[1] + q_max[2];
     // solve for q2 & q3 with z1 & z2
     for (int j = 0; j < 2; ++j){
         int j_offset = 0;
-        for (auto qs : solveType7(0, -a3, z1, z2, a4, r4, q_min[1], q_max[1], q_min[1] + q_min[2], q_max[1] + q_max[2])) {
+        for (auto qs: solveType7(0, -a3, z1, z2, a4, r4, q_min[1], q_max[1], q23_min, q23_max)) {
             auto q2 = qs.qi;
             auto q3 = qs.qj - q2;
             // q1
-            double _coef_q1 = a2 + a3 * cos(q2) - a4 * sin(q2 + q3) + r4 * cos(q2 + q3);
-            double q1 = atan2(ftw[1]/(-_coef_q1), ftw[0]/_coef_q1);
+            auto _coef_q1 = a2 + a3 * cos(q2) - a4 * sin(q2 + q3) + r4 * cos(q2 + q3);
+            auto q1 = atan2(ftw[1]/(-_coef_q1), ftw[0]/_coef_q1);
             // update IG solutions
             ig_solutions[0][0 + j_offset] = q1;
             ig_solutions[1][0 + j_offset] = q2;
@@ -97,12 +99,12 @@ vpColVector ecn::RobotKr16::inverseGeometry(const vpHomogeneousMatrix &Md, const
     // solve for q2 & q3 with z1 & z2_neg
     for (int j = 0; j < 2; ++j){
         int j_offset = 0;
-        for (auto qs : solveType7(0, -a3, z1, z2_neg, a4, r4, q_min[1], q_max[1], q_min[1] + q_min[2], q_max[1] + q_max[2])) {
+        for (auto qs : solveType7(0, -a3, z1, z2_neg, a4, r4, q_min[1], q_max[1], q23_min, q23_max)) {
             auto q2 = qs.qi;
             auto q3 = qs.qj - q2;
             // q1
-            double _coef_q1 = a2 + a3 * cos(q2) - a4 * sin(q2 + q3) + r4 * cos(q2 + q3);
-            double q1 = atan2(ftw[1]/(-_coef_q1), ftw[0]/_coef_q1);
+            auto _coef_q1 = a2 + a3 * cos(q2) - a4 * sin(q2 + q3) + r4 * cos(q2 + q3);
+            auto q1 = atan2(ftw[1]/(-_coef_q1), ftw[0]/_coef_q1);
             // update IG solutions
             ig_solutions[0][4 + j_offset] = q1;
             ig_solutions[1][4 + j_offset] = q2;
@@ -182,13 +184,16 @@ vpColVector ecn::RobotKr16::inverseGeometry(const vpHomogeneousMatrix &Md, const
     int best_col = 0;
     double min_dist = (ig_solutions.getCol(best_col) - q0).euclideanNorm();
     for (int j = 1; j < num_ig_solutions; ++j) {
-        if ((ig_solutions.getCol(best_col) - q0).euclideanNorm() < min_dist) {
+//        if ((ig_solutions.getCol(best_col) - q0).euclideanNorm() < min_dist) {
+//            best_col = j;
+//        }
+        if (!isNull(ig_solutions[0][j])){
             best_col = j;
         }
     }
 
 //     return bestCandidate(q0);
-    return ig_solutions.getCol(0);
+    return ig_solutions.getCol(best_col);
 }
 
 
