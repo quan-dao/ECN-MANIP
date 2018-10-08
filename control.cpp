@@ -102,10 +102,28 @@ int main(int argc, char ** argv)
             {
                 q0 = robot->inverseGeometry(M0, q);
                 qf = robot->inverseGeometry(Md, q);
+                // find tf
+                tf = 0;
+                for (int i = 0; i < vMax.size(); ++i) {
+                    double cand = vMax[i] / aMax[i] + (qf[i] - q0[i]) / vMax[i];
+                    if (cand > tf)
+                        tf = cand;
+                }
+                // compute joitn command
+                double _t = t - t0;
+                for (int i = 0; i < vMax.size(); ++i) {
+                    double to = vMax[i] / aMax[i];
+                    if (_t < to) {
+                        qCommand[i] = q0[i] + 0.5 * aMax[i] * _t * _t;
+                    } else if (_t < tf - to) {
+                        qCommand[i] = q0[i] + vMax[i] * (_t - 0.5 * to);
+                    } else {
+                        qCommand[i] = qf[i] - 0.5 * aMax[i] * (tf - _t) * (tf - _t);
+                    }
+                }
             }
-
+        //   cout<<"t ="<<t-t0<<"\tq1 = "<<qCommand[0]<<"\tq2 = "<<qCommand[1]<<"\tq3 = "<<qCommand[2]<<"\tq4 = "<<qCommand[3]<<"\tq5 = "<<qCommand[4]<<"\tq6 = "<<qCommand[5]<<"\n";
             // TODO: compute qCommand from q0, qf, t, t0 and tf
-
             robot->setJointPosition(qCommand);
         }
 
