@@ -104,25 +104,35 @@ int main(int argc, char ** argv)
                 qf = robot->inverseGeometry(Md, q);
                 // find tf
                 tf = 0;
-                for (int i = 0; i < vMax.size(); ++i) {
-                    double cand = vMax[i] / aMax[i] + (qf[i] - q0[i]) / vMax[i];
+                for (int i = 0; i < vMax.size(); i++) {
+//                    double cand = vMax[i] / aMax[i] + (qf[i] - q0[i]) / vMax[i];  // trapezoidal profile
+                	double dq = qf[i] - q0[i];
+                    double cand = 1.5 * std::abs(dq) / vMax[i];
                     if (cand > tf)
-                        tf = cand;
+                        {tf = cand;}
+                    cand = std::sqrt(6 * std::abs(dq) / aMax[i]);
+                    if (cand > tf)
+                        {tf = cand;}
                 }
-
-                // compute joitn command
-                double _t = t - t0;
-                for (int i = 0; i < vMax.size(); ++i) {
-                    double to = vMax[i] / aMax[i];
-                    if (_t < to) {
-                        qCommand[i] = q0[i] + 0.5 * aMax[i] * _t * _t;
-                    } else if (_t < tf - to) {
-                        qCommand[i] = q0[i] + vMax[i] * (_t - 0.5 * to);
-                    } else {
-                        qCommand[i] = qf[i] - 0.5 * aMax[i] * (tf - _t) * (tf - _t);
-                    }
+            }
+            // compute joitn command
+            double ratio = (t - t0) / tf;
+            if (ratio < 1) {
+                for (int i = 0; i < vMax.size(); i++) {
+                    // double to = vMax[i] / aMax[i];
+                    // if (_t < to) {
+                    //     qCommand[i] = q0[i] + 0.5 * aMax[i] *pow(_t, 2);
+                    // } else if (_t < tf - to) {
+                    //     qCommand[i] = q0[i] + vMax[i] * (_t - 0.5 * to);
+                    // } else {
+                    //     qCommand[i] = qf[i] - 0.5 * aMax[i] * pow((tf - _t), 2);
+                    // }
+                    double dq = qf[i] - q0[i];
+                    double P = 3 * pow(ratio, 2) - 2 * pow(ratio, 3);
+                    qCommand[i] = q0[i] + P * dq;
                 }
-
+            } else {
+                qCommand = qf;
             }
 
         //   cout<<"t ="<<t-t0<<"\tq1 = "<<qCommand[0]<<"\tq2 = "<<qCommand[1]<<"\tq3 = "<<qCommand[2]<<"\tq4 = "<<qCommand[3]<<"\tq5 = "<<qCommand[4]<<"\tq6 = "<<qCommand[5]<<"\n";
