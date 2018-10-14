@@ -1,5 +1,5 @@
 #include <trig_solvers.h>
-#include <math.h>
+#include <cmath>
 
 namespace ecn
 {
