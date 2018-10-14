@@ -148,7 +148,9 @@ int main(int argc, char ** argv)
 
             // TODO: compute qCommand from M0, Md, t, t0 and tf
             // use robot->intermediaryPose to build poses between M0 and Md
-
+            double alpha = (t - t0) / 1;
+            auto Mt = robot->intermediaryPose(M0, Md, alpha);
+            qCommand = robot->inverseGeometry(Mt, q);
             robot->setJointPosition(qCommand);
         }
 
