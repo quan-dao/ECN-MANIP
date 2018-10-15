@@ -63,10 +63,51 @@ vpHomogeneousMatrix ecn::RobotTurret::fMw(const vpColVector &q) const
 // Inverse Geometry
 vpColVector ecn::RobotTurret::inverseGeometry(const vpHomogeneousMatrix &Md, const vpColVector &q0) const
 {
+    double d = 0.1;
+    double b = 0.5;
     vpColVector q(dofs);
+    vpMatrix ig_solutions(3, 2);
 
+    double q1_pos = atan2(-Md[0][1], Md[1][1]);
+    double q1_neg = q1_pos +M_PI;
 
-    return q;
+    std::vector<double> q1_list = {q1_pos, q1_neg};
+    for (int i = 0; i < 2; ++i) {
+        auto q1 = q1_list[i];
+        if (inAngleLimits(q1, q_min[0], q_max[0])) {
+            double q2, q3;
+
+            if (isNull(sin(q1))) {
+                q2 = atan2(-Md[0][2]/cos(q1), Md[0][0]/cos(q1));
+            } else {
+                q2 = atan2(-Md[1][2]/sin(q1), Md[1][0]/sin(q1));
+            }
+
+            if (inAngleLimits(q2, q_min[1], q_max[1])) {
+                if (!isNull(cos(q2)))
+                    q3 = (Md[2][3] - b) / cos(q2) - d;
+                else
+                    if(!isNull(cos(q1)))
+                        q3 = -Md[0][3]/(sin(q2) * cos(q1)) - d;
+                    else
+                        q3 = -Md[1][3]/(sin(q2) * sin(q1)) - d;
+            }
+            // update
+            ig_solutions[0][i] = q1;
+            ig_solutions[1][i] = q2;
+            ig_solutions[2][i] = q3;
+        }
+    }
+
+    vpColVector dist_vector = ig_solutions.getCol(0) - q0;
+    double min_dist = dist_vector.transpose() * dist_vector;
+
+    vpColVector dist_vector_1 = ig_solutions.getCol(1) - q0;
+    if (dist_vector_1.transpose() * dist_vector_1 < min_dist) {
+        return ig_solutions.getCol(1);
+    }
+
+    return ig_solutions.getCol(0);
 }
 
 // Wrist Jacobian
