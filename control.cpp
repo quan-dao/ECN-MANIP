@@ -160,11 +160,32 @@ int main(int argc, char ** argv)
             // go to Md using operational velocity
 
             // TODO: compute joint velocity command
+            // compute error in desired frame
+            auto eStar_M_e = Md.inverse() * M;
+            // convert error matrix to vector-angle angle form
+            vpPoseVector e;
+            e.buildFrom(eStar_M_e);
+            // calculate desired linear and angular vel
+            vpColVector vec_t(3);
+            vec_t[0] = e[0];
+            vec_t[1] = e[1];
+            vec_t[2] = e[2];
 
+            vpColVector vec_tu(3);
+            vec_tu[0] = e[3];
+            vec_tu[1] = e[4];
+            vec_tu[2] = e[5];
 
+            auto v = -robot->lambda() * Md.getRotationMatrix() * vec_t;
+            auto omega = -robot->lambda() * M.getRotationMatrix() * vec_tu;
+
+            vpColVector fVe(6);
+            ecn::putAt(fVe, v, 0);
+            ecn::putAt(fVe, omega, 3);
+            vCommand = robot->fJe(q).pseudoInverse() * fVe;
 
             robot->setJointVelocity(vCommand);
-            break;
+            //break;
         }
 
 
