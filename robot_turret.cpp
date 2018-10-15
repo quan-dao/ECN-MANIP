@@ -82,6 +82,10 @@ vpColVector ecn::RobotTurret::inverseGeometry(const vpHomogeneousMatrix &Md, con
             } else {
                 q2 = atan2(-Md[1][2]/sin(q1), Md[1][0]/sin(q1));
             }
+//            q2 = atan2(Md[2][0], Md[2][2]);
+//            if (inAngleLimits(q2, q_min[1], q_max[1])) {
+//                //
+//            }
 
             if (inAngleLimits(q2, q_min[1], q_max[1])) {
                 if (!isNull(cos(q2)))
