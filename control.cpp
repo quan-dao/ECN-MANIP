@@ -160,28 +160,36 @@ int main(int argc, char ** argv)
             // go to Md using operational velocity
 
             // TODO: compute joint velocity command
-            // compute error in desired frame
-            auto eStar_M_e = Md.inverse() * M;
-            // convert error matrix to vector-angle angle form
+
+            // compute pose error between current pose and desired pose, relative to desired pose
             vpPoseVector e;
+            auto eStar_M_e = Md.inverse() * M;
             e.buildFrom(eStar_M_e);
-            // calculate desired linear and angular vel
-            vpColVector vec_t(3);
-            vec_t[0] = e[0];
-            vec_t[1] = e[1];
-            vec_t[2] = e[2];
 
-            vpColVector vec_tu(3);
-            vec_tu[0] = e[3];
-            vec_tu[1] = e[4];
-            vec_tu[2] = e[5];
+            // construct W
+            vpMatrix W(6, 6);
+            for(int i = 0; i < 6; ++i)
+                W[i][i] = robot->lambda();
+//            // try to mess thing up
+//            W[1][1] *= 2;
+//            W[2][2] *= 0.5;
 
-            auto v = -robot->lambda() * Md.getRotationMatrix() * vec_t;
-            auto omega = -robot->lambda() * M.getRotationMatrix() * vec_tu;
+            // compute desired value of velocity screw of E-E in E-E frame
+            auto e_v_e = eStar_M_e.getRotationMatrix().inverse() * e.getTranslationVector();  // translational velocity of frame{E} in frame{E}
+            auto e_omega_e = e.getThetaUVector();  // rotational velocity of frame{E} in frame{E}
+            vpColVector eVe(6);  // velocity screw
+            ecn::putAt(eVe, e_v_e, 0);
+            ecn::putAt(eVe, e_omega_e, 3);
+            eVe = -W * eVe;
 
-            vpColVector fVe(6);
-            ecn::putAt(fVe, v, 0);
-            ecn::putAt(fVe, omega, 3);
+            // Transform eVe to fVe
+            // construct f_Rbar_e
+            vpMatrix f_Rbar_e(6, 6);
+            ecn::putAt(f_Rbar_e, M.getRotationMatrix(), 0, 0);
+            ecn::putAt(f_Rbar_e, M.getRotationMatrix(), 3, 3);
+            auto fVe = f_Rbar_e * eVe;
+
+            // Compute joint velocity
             vCommand = robot->fJe(q).pseudoInverse() * fVe;
 
             robot->setJointVelocity(vCommand);
