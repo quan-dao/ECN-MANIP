@@ -171,16 +171,17 @@ vpColVector ecn::RobotKr16::inverseGeometry(const vpHomogeneousMatrix &Md, const
     vpColVector dist_vector = ig_solutions.getCol(best_col) - q0;
     double min_dist = dist_vector.transpose() * dist_vector;
     for (int j = 1; j < sol_q2_q23.size()*2; ++j) {
-        dist_vector = ig_solutions.getCol(j) - q0;
+        auto this_sol = ig_solutions.getCol(j);
+        // prevent change in the elbow mode
+        if (this_sol[2] * q0[2] < 0){
+            // q3(t+delta_t) * q3(t) < 0 => the elbow mode is different between 2 times
+            continue;
+        }
+        dist_vector = this_sol - q0;
         if (dist_vector.transpose() * dist_vector < min_dist) {
             best_col = j;
         }
-//        if (!isNull(ig_solutions[0][j])){
-//            best_col = j;
-//        }
     }
-
-//     return bestCandidate(q0);
     return ig_solutions.getCol(best_col);
 }
 
